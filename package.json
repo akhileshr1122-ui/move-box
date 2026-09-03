@@ -1,7 +1,7 @@
 {
   "name": "movebox",
   "productName": "MoveBox",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "description": "Motion-controlled games played with your body through the webcam",
   "main": "main.js",
   "private": true,

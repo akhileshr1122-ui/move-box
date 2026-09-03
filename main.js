@@ -25,6 +25,9 @@ app.whenReady().then(async () => {
   const win = new BrowserWindow({ width: 1280, height: 720, fullscreen: true, autoHideMenuBar: true, backgroundColor: '#06070B', title: 'MoveBox',
     webPreferences: { backgroundThrottling: false, contextIsolation: true, sandbox: true } });
   win.loadURL(`http://127.0.0.1:${port}/index.html?local=1`);
+  win.webContents.on('console-message', (e, level, message) => { if (level >= 2) console.log('[renderer]', message); });
+  win.webContents.on('render-process-gone', (e, d) => console.log('[renderer gone]', d.reason));
+  globalShortcut.register('F12', () => win.webContents.toggleDevTools());
   globalShortcut.register('F11', () => win.setFullScreen(!win.isFullScreen()));
   globalShortcut.register('Escape', () => { if (win.isFullScreen()) win.setFullScreen(false); });
 });
