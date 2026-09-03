@@ -27,15 +27,30 @@ jobs:
           echo "Project directory: $D"
           echo "dir=$D" >> "$GITHUB_OUTPUT"
 
-      - name: Download the body-tracking model so the app works offline
+      # Optional: bundling the model makes the app work with no internet.
+      # If none of the URLs answer, the build carries on and the app fetches the model on first run.
+      - name: Bundle the body-tracking model (optional)
         shell: bash
         working-directory: ${{ steps.find.outputs.dir }}
         run: |
           mkdir -p www/models/movenet
-          BASE=https://storage.googleapis.com/tfjs-models/savedmodel/movenet/singlepose/lightning/4
-          curl -sfL "$BASE/model.json" -o www/models/movenet/model.json
-          python -c "import json,subprocess; m=json.load(open('www/models/movenet/model.json')); base='$BASE/'; [subprocess.check_call(['curl','-sfL',base+p,'-o','www/models/movenet/'+p]) or print('fetched',p) for g in m.get('weightsManifest',[]) for p in g.get('paths',[])]"
-          ls -la www/models/movenet
+          ok=0
+          for BASE in \
+            "https://storage.googleapis.com/tfhub-tfjs-modules/google/tfjs-model/movenet/singlepose/lightning/4" \
+            "https://storage.googleapis.com/tfjs-models/savedmodel/movenet/singlepose/lightning/4" ; do
+            echo "trying $BASE"
+            if curl -sfL "$BASE/model.json" -o www/models/movenet/model.json; then
+              if python -c "import json,subprocess; m=json.load(open('www/models/movenet/model.json')); base='$BASE/'; [subprocess.check_call(['curl','-sfL',base+p,'-o','www/models/movenet/'+p]) or print('fetched',p) for g in m.get('weightsManifest',[]) for p in g.get('paths',[])]"; then
+                ok=1; echo "model bundled from $BASE"; break
+              fi
+            fi
+            echo "not available at $BASE"
+          done
+          if [ "$ok" = "0" ]; then
+            echo "::warning::Model could not be bundled - the app will download it on first run (needs internet once)."
+            rm -f www/models/movenet/model.json
+          fi
+          ls -la www/models/movenet || true
 
       - name: Install and build
         shell: bash
