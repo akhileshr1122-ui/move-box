@@ -1,0 +1,38 @@
+name: Build MoveBox for Windows
+
+on:
+  push:
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: movebox-windows
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Download the body-tracking model so the app works offline
+        shell: bash
+        run: |
+          mkdir -p www/models/movenet
+          BASE=https://storage.googleapis.com/tfjs-models/savedmodel/movenet/singlepose/lightning/4
+          curl -sfL "$BASE/model.json" -o www/models/movenet/model.json
+          python -c "import json,subprocess; m=json.load(open('www/models/movenet/model.json')); base='$BASE/'; [subprocess.check_call(['curl','-sfL',base+p,'-o','www/models/movenet/'+p]) or print('fetched',p) for g in m.get('weightsManifest',[]) for p in g.get('paths',[])]"
+          ls -la www/models/movenet
+
+      - name: Install and build
+        run: |
+          npm install
+          npm run dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MoveBox-windows
+          path: movebox-windows/dist/*.exe
+          if-no-files-found: error
