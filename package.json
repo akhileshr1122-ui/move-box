@@ -1,0 +1,24 @@
+{
+  "name": "movebox",
+  "productName": "MoveBox",
+  "version": "3.0.0",
+  "description": "Motion-controlled games played with your body through the webcam",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis portable --publish never"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.movebox.play",
+    "productName": "MoveBox",
+    "files": ["main.js", "www/**/*"],
+    "directories": { "output": "dist" },
+    "win": { "target": ["nsis", "portable"] },
+    "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true, "createDesktopShortcut": true }
+  }
+}
