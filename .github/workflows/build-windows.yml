@@ -4,10 +4,6 @@ on:
   push:
   workflow_dispatch:
 
-defaults:
-  run:
-    working-directory: movebox-windows
-
 jobs:
   windows:
     runs-on: windows-latest
@@ -17,8 +13,23 @@ jobs:
         with:
           node-version: '20'
 
+      # Works whether the project sits at the repo root or inside a subfolder
+      - name: Locate the project
+        id: find
+        shell: bash
+        run: |
+          echo "--- repository contents ---"
+          ls -R . | head -40
+          if [ -f package.json ]; then D=.
+          elif [ -f movebox-windows/package.json ]; then D=movebox-windows
+          else D=$(dirname "$(find . -name package.json -not -path '*/node_modules/*' | head -1)"); fi
+          if [ -z "$D" ]; then echo "No package.json found anywhere in the repo."; exit 1; fi
+          echo "Project directory: $D"
+          echo "dir=$D" >> "$GITHUB_OUTPUT"
+
       - name: Download the body-tracking model so the app works offline
         shell: bash
+        working-directory: ${{ steps.find.outputs.dir }}
         run: |
           mkdir -p www/models/movenet
           BASE=https://storage.googleapis.com/tfjs-models/savedmodel/movenet/singlepose/lightning/4
@@ -27,12 +38,15 @@ jobs:
           ls -la www/models/movenet
 
       - name: Install and build
+        shell: bash
+        working-directory: ${{ steps.find.outputs.dir }}
         run: |
           npm install
           npm run dist
+          ls -la dist
 
       - uses: actions/upload-artifact@v4
         with:
           name: MoveBox-windows
-          path: movebox-windows/dist/*.exe
+          path: ${{ steps.find.outputs.dir }}/dist/*.exe
           if-no-files-found: error
