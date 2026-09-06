@@ -489,17 +489,22 @@ function hud(left, right, center, centerColor) {
 }
 // Selection is a deliberate act: put a hand over a tile and CLOSE it. Hovering alone never fires, so
 // the pointer can rest anywhere without launching a game.
-const grabSel = { key: null, wasOpen: false, t: 0, armed: false };
+// A pick has to be deliberate: hold an OPEN palm over the tile, then CLOSE it and hold that closed.
+// A single flickery frame from the hand model can no longer launch anything.
+const OPEN_HOLD = 0.25, CLOSE_HOLD = 0.22;
+const grabSel = { key: null, open: 0, closed: 0, armed: false };
+let menuArmedAt = 0;                                  // ignore gestures for a moment after a screen change
 function anyFistClosed() {
   const now = performance.now();
   let closed = false, seen = false;
   for (const side of ['left', 'right']) {
     const f = fists[side];
-    if (now - f.t > 900) continue;                 // that hand has not been seen recently
+    if (now - f.t > 700) continue;                    // that hand has not been seen recently
     seen = true; if (f.closed) closed = true;
   }
   return { seen, closed };
 }
+function resetGrab() { grabSel.key = null; grabSel.open = 0; grabSel.closed = 0; grabSel.armed = false; }
 function buttons(list, dt) {
   const hs = hands();
   let active = null;
@@ -517,20 +522,30 @@ function buttons(list, dt) {
     if (b.sub) txt(b.sub, b.x + b.w / 2, b.y + b.h / 2 + b.h * 0.16, Math.min(18, b.h * 0.14), { color: on ? '#FFE9BF' : '#C9CCDD' });
   }
   const st = anyFistClosed();
-  if (active) {
-    if (grabSel.key !== active.label) { grabSel.key = active.label; grabSel.armed = false; grabSel.wasOpen = false; }
+  const settled = performance.now() - menuArmedAt > 700;
+  if (active && settled) {
+    if (grabSel.key !== active.label) resetGrab(), grabSel.key = active.label;
     if (st.seen) {
-      if (!st.closed) { grabSel.wasOpen = true; grabSel.armed = true; }        // an open palm arms the pick
-      else if (grabSel.armed && grabSel.wasOpen) {                             // closing it confirms
-        grabSel.armed = false; grabSel.wasOpen = false; grabSel.key = null;
-        beep(700, .1, 'triangle', .2); haptic(60, .8, .5); active.action(); return list;
-      }
+      if (!st.closed) { grabSel.open += dt; grabSel.closed = 0; if (grabSel.open >= OPEN_HOLD) grabSel.armed = true; }
+      else if (grabSel.armed) {
+        grabSel.closed += dt;
+        // a ring fills while you hold the grab, so a mis-fire is visible before it happens
+        const p = clamp(grabSel.closed / CLOSE_HOLD, 0, 1);
+        ctx.beginPath(); ctx.lineWidth = 7; ctx.strokeStyle = AMBER;
+        ctx.arc(active.x + active.w - 26, active.y + 26, 14, -Math.PI / 2, -Math.PI / 2 + p * TAU); ctx.stroke();
+        if (grabSel.closed >= CLOSE_HOLD) {
+          resetGrab(); menuArmedAt = performance.now();
+          beep(700, .1, 'triangle', .2); haptic(60, .8, .5); active.action(); return list;
+        }
+      } else grabSel.closed = 0;                       // walked in with a closed hand: open it first
     }
-    // prompt, so it is obvious what to do
     const cx = active.x + active.w / 2, cy = active.y + active.h - 14;
-    txt(handModelState === 'ready' ? (st.seen ? (grabSel.armed ? 'close your hand to pick' : 'open your hand, then close') : 'show your hand')
-                                   : 'press OK or tap to pick', cx, cy, 15, { color: AMBER });
-  } else { grabSel.key = null; grabSel.armed = false; grabSel.wasOpen = false; }
+    txt(handModelState !== 'ready' ? 'press OK or tap to pick'
+        : !st.seen ? 'show your hand'
+        : st.closed ? (grabSel.armed ? 'hold…' : 'open your hand first')
+        : grabSel.armed ? 'now close your hand' : 'hold still…',
+        cx, cy, 15, { color: AMBER });
+  } else resetGrab();
   padList = list;                                   // the remote needs to know what is on screen
   return list;
 }
@@ -566,13 +581,13 @@ addEventListener('keydown', e => {
   }
 });
 // game controllers and remotes that present as one: D-pad and the A button
-let padPrev = {};
+let padPrev = {}, padPrimed = false;
 function pollPad() {
   const gps = navigator.getGamepads ? navigator.getGamepads() : [];
   for (const gp of gps) {
     if (!gp) continue;
     const press = (idx) => gp.buttons[idx] && gp.buttons[idx].pressed;
-    const edge = (idx, name) => { const p = press(idx), was = padPrev[name]; padPrev[name] = p; return p && !was; };
+    const edge = (idx, name) => { const p = press(idx), was = padPrev[name]; padPrev[name] = p; return padPrimed && p && !was; };
     if (edge(12, 'u')) padMove('up');
     if (edge(13, 'd')) padMove('down');
     if (edge(14, 'l')) padMove('left');
@@ -583,6 +598,7 @@ function pollPad() {
       if (!padPrev.ax) { padMove(Math.abs(ax) > Math.abs(ay) ? (ax > 0 ? 'right' : 'left') : (ay > 0 ? 'down' : 'up')); padPrev.ax = true; }
     } else padPrev.ax = false;
   }
+  padPrimed = true;   // anything already held when we started is not a press
 }
 cv.addEventListener('pointerdown', e => {
   const pt = evPos(e);
@@ -1688,7 +1704,7 @@ function asteroids(dt) {
 }
 
 // ---------- Screens ----------
-function startCal(next) { pending = next; cal.t = 0; state = 'calibrate'; }
+function startCal(next) { pending = next; cal.t = 0; state = 'calibrate'; menuArmedAt = performance.now(); resetGrab(); }
 function menu(dt) {
   drawCamera(0.62);
   // a soft vignette so the tiles read against a busy room
